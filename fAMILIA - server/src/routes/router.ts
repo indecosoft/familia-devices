@@ -14,6 +14,7 @@ router
     .use(log)
     .get('/passwordReset/:token', mobile.passwordUpdate)
     .post('/login', mobile.login)
+    .post('/login-das-bm', mobile.loginDasBM)
     .post('/register', mobile.register)
     .post('/passwordReset', mobile.passwordReset)
     // devices
@@ -42,6 +43,8 @@ router
     .post('/deleteSharingPeople', verifyToken, mobile.deleteSharingPeople)
     .post('/getSharedPeople', verifyToken, mobile.sharedPeople)
     .get('/getAllBenefits', verifyToken, asisoc.getBenefits)
+    .get('/selfRegisteredBenefits', verifyToken, mobile.getSelfBenefits)
+    .post('/selfRegisteredBenefits', verifyToken, mobile.saveSelfBenefits)
     // imei
     .post('/getDayRec', verifyImei, mobile.getDayRec)
     .post('/smartband/sleep', verifyImei, mobile.smartbandSleep)
@@ -60,6 +63,9 @@ router
     .post('/addMedicine', asisoc.addMedicine)
     .post('/asisocVisit', asisoc.asisocVisit)
     .post('/delete-all-user-data', asisoc.deleteAllUserData)
+    .post('add-user', asisoc.addUserAsisoc)
+    .post('institutii', asisoc.institutiiAsisoc)
+    .post('servicii-beneficii', asisoc.serviciiBeneficiiAsisoc)
     // gis
     .get('/get-devices-config', devices.getDevicesConfig)
     .get('/get-device-alerts/:idClient', devices.getDeviceAlertsClient)

@@ -2,15 +2,60 @@ import Koa from 'koa';
 import * as nodemailer from 'nodemailer';
 // import * as base64Img from 'base64-img';
 const base64Img = require('base64-img');
+import { genSaltSync, hashSync } from 'bcryptjs';
 
 import * as queries from './../queries/mobile';
 import config from './../../config';
 import {executeQuery, getClient, clientQuery} from '../../db';
-import {generateToken, checkToken} from '../../middleware';
+import {generateToken, checkToken, encript, decript} from '../../middleware';
 import {users} from '../../socket/socket';
 import {generareUtilizatoriFictivi} from "../../generareUtilizatoriFictivi";
 
 const transporter = nodemailer.createTransport(config.configTransporter);
+
+export async function loginDasBM(ctx: Koa.Context) {
+    try {
+        const body: {email: string, password: string, idClient: number} = ctx.request.body;
+
+        if (!body) {
+            ctx.throw(403);
+        }
+
+        if (!body.email) {
+            ctx.throw(403, {message: 'Email is required'});
+        }
+
+        if (!body.password) {
+            ctx.throw(403, {message: 'Password is required'});
+        }
+
+        if (!body.idClient) {
+            ctx.throw(403, {message: 'idClient is required!'});
+        }
+
+        let user = await executeQuery({
+            text: `SELECT "idContAsisoc" FROM "ingrijiriPaleative".users
+                        WHERE email = $1
+                          AND password = $2 || salt
+                          AND "idClient" = $3
+                          AND tip = 6`,
+            values: [body.email, encript(body.password), body.idClient]
+        });
+
+        if (!user.length || !user[0].idContAsisoc) {
+            ctx.throw(403, {message: 'Invalid credentials'});
+        }
+
+        ctx.body = {
+            idContAsisoc: user[0].idContAsisoc
+        };
+
+    } catch (e) {
+        console.log(`Error on loginDasBM: ${e.message || e}`);
+        ctx.status = e.status || 500;
+        ctx.body = {message: e.message || e}
+    }
+}
 
 export async function login(ctx: Koa.Context) {
     // body: {email, password, imei}
@@ -31,7 +76,9 @@ export async function login(ctx: Koa.Context) {
             ctx.body = {status: 0};
         }
     } catch (e) {
-        ctx.throw(e.status || 500, {message: e.message || e});
+        console.log(`Error on login: ${e.message || e}`);
+        ctx.status = e.status || 500;
+        ctx.body = {message: e.message || e}
     }
 }
 
@@ -45,8 +92,9 @@ export async function register(ctx: Koa.Context) {
             ctx.body = {status: 0};
         }
     } catch (e) {
-        console.log('Error -> register: ', e.message || e);
-        ctx.throw(e.status || 500, {message: e.message || e});
+        console.log(`Error on register: ${e.message || e}`);
+        ctx.status = e.status || 500;
+        ctx.body = {message: e.message || e}
     }
 
 }
@@ -596,5 +644,44 @@ export async function getUserBenefits(ctx: Koa.Context) {
         }
     } catch (e) {
         ctx.throw(e.status || 500, {message: e.message || e});
+    }
+}
+
+export async function getSelfBenefits(ctx: Koa.Context) {
+    try {
+        return ctx.body = {
+            status: 2,
+            data: await executeQuery({
+                text: `SELECT * FROM "ingrijiriPaleative"."selftRegisteredBenefitsList"`,
+                values: []
+            })
+        }
+    } catch (e) {
+        ctx.throw(e.status || 500, {message: e.message || e});
+    }
+}
+
+export async function saveSelfBenefits(ctx: Koa.Context) {
+    try {
+        const body: {idPersAsisoc: number, data: Date, obs: string, benefits: Array<number>} = ctx.request.body;
+
+        if (!body || !body.idPersAsisoc || !body.data || !body.obs || !body.benefits || !body.benefits.length) {
+            ctx.throw(422);
+        }
+
+        ctx.body = {
+            status: 2,
+            data: await executeQuery({
+                text: `
+                    INSERT INTO "ingrijiriPaleative"."selfRegisteredBenefits" ("idPersAsisoc", data, obs, benefits)
+                        VALUES ($1, $2, $3, $4) 
+                `,
+                values: [body.idPersAsisoc, body.data, body.obs, body.benefits]
+            })
+        }
+    } catch (e) {
+        ctx.status = e.status || 500;
+        ctx.body = { status: 0, message: e.message || e}
+        console.log('Error on saveSelfBenefits: ', e.message || e);
     }
 }

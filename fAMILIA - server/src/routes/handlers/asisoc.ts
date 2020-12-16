@@ -1,9 +1,10 @@
 import Koa from 'koa';
-import {executeQuery, getClient} from '../../db';
+import {clientQuery, executeQuery, getClient} from '../../db';
 import * as queries from './../queries/mobile';
 import {clients} from '../../socket/socket';
 import {Socket} from 'net';
 import {MedicineModel, IConfigJoc, IVisit} from '../../models';
+import {genSaltSync, hashSync} from "bcryptjs";
 
 export async function getDiseaseAsisoc(ctx: Koa.Context) {
     try {
@@ -359,6 +360,157 @@ export async function deleteAllUserData(ctx: Koa.Context) {
         client.release();
     }
 }
+
+
+export async function addUserAsisoc(ctx: Koa.Context) {
+    try {
+        const body: {idClient: number, email: string, password: string, imei: string, tip: number, nume: string, idPersAsisoc: number} = ctx.request.body;
+
+        if (!body || !body.idClient || !body.email || !body.password || !body.imei || !body.tip || !body.nume || !body.idPersAsisoc) {
+            ctx.throw(422);
+        }
+
+        const salt = genSaltSync();
+        const ePass = hashSync(body.password, salt);
+
+        await executeQuery({text: `
+                INSERT INTO "ingrijiriPaleative".users ("idClient", email, password, salt, imei, tip, nume, "idPersAsisoc") 
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `, values: [
+                body.idClient, body.email, ePass + salt, salt, body.imei, body.tip, body.nume, body.idPersAsisoc
+            ]});
+
+        ctx.body = {message: 'Success'};
+
+    } catch (e) {
+        console.log(`Error on addUserAsisoc: ${e.message || e}`);
+        ctx.status = e.status || 500;
+        ctx.body = {message: e.message || e}
+    }
+}
+
+export async function institutiiAsisoc(ctx: Koa.Context) {
+    try {
+        const body: {idAsisoc: number, idClient: number, nume: string, site: string, tip: number, detalii?: string, actiune: string} = ctx.request.body;
+        //    id_asisoc, id_client, nume, site, tip[5/6/56], detalii
+
+        if (!body || !body.idAsisoc || !body.idClient || !body.nume || !body.site || !body.tip || !body.actiune) {
+            ctx.throw(422);
+        }
+
+        switch (body.actiune) {
+            case 'insert':
+                await executeQuery({
+                    text: `INSERT INTO "ingrijiriPaleative".institutii_asisoc(id_asisoc, id_client, nume, site, tip, detalii)
+                                VALUES ($1, $2, $3, $4, $5, $6)`,
+                    values: [body.idAsisoc, body.idClient, body.nume, body.site, body.tip, body.detalii || ""]
+                });
+                break;
+            case 'update':
+                const client = await getClient();
+
+                try {
+                    await client.query('BEGIN');
+
+                    await clientQuery(client, {
+                        text: `DELETE FROM "ingrijiriPaleative".institutii_asisoc WHERE id_asisoc = $1`,
+                        values: [body.idAsisoc]
+                    });
+
+                    await clientQuery(client,{
+                        text: `INSERT INTO "ingrijiriPaleative".institutii_asisoc(id_asisoc, id_client, nume, site, tip, detalii)
+                                    VALUES ($1, $2, $3, $4, $5, $6)`,
+                        values: [body.idAsisoc, body.idClient, body.nume, body.site, body.tip, (body as any)['detalii'] || ""]
+                    });
+
+                    await client.query('COMMIT');
+                } catch (e) {
+                    await client.query('ROLLBACK');
+                    ctx.throw(500, e.message);
+                } finally {
+                    await client.release();
+                }
+                break;
+            case 'delete':
+                await executeQuery({
+                    text: `DELETE FROM "ingrijiriPaleative".institutii_asisoc WHERE id_asisoc = $1`,
+                    values: [body.idAsisoc]
+                });
+                break;
+            default:
+                ctx.throw(422, 'Unknown action');
+        }
+
+        ctx.body = {message: 'Success'};
+    } catch (e) {
+        console.log(`Error on institutiiAsisoc: ${e.message || e}`);
+        ctx.status = e.status || 500;
+        ctx.body = e.message || e;
+    }
+}
+
+export async function serviciiBeneficiiAsisoc(ctx: Koa.Context) {
+    try {
+        const body: {idAsisoc: number, idClient: number, idInstitutie: number, nume: string, detalii?: string, actiune: string} = ctx.request.body;
+        //    id_asisoc, id_client, id_institutie, nume, detalii
+
+        if (!body || !body.idAsisoc || !body.idClient || !body.idInstitutie || !body.nume || !body.actiune) {
+            ctx.throw(422);
+        }
+
+        switch (body.actiune) {
+            case 'insert':
+                await executeQuery({
+                    text: `INSERT INTO "ingrijiriPaleative".servicii_beneficii_asisoc (id_asisoc, id_client, id_institutie, nume, detalii)
+                                VALUES ($1, $2, $3, $4, $5)`,
+                    values: [body.idAsisoc, body.idClient, body.idInstitutie, body.nume, body.detalii || '']
+                });
+                break;
+            case 'update':
+                const client = await getClient();
+
+                try {
+
+                    await client.query('BEGIN');
+
+                    await clientQuery(client, {
+                        text: `DELETE FROM "ingrijiriPaleative".servicii_beneficii_asisoc WHERE id_asisoc = $1`,
+                        values: [body.idAsisoc]
+                    });
+
+                    await clientQuery(client, {
+                        text: `INSERT INTO "ingrijiriPaleative".servicii_beneficii_asisoc (id_asisoc, id_client, id_institutie, nume, detalii)
+                                VALUES ($1, $2, $3, $4, $5)`,
+                        values: [body.idAsisoc, body.idClient, body.idInstitutie, body.nume, body.detalii || '']
+                    });
+
+                    await client.query('COMMIT');
+
+                } catch (e) {
+                    await client.query('ROLLBACK');
+                    ctx.throw(500, e.message);
+                } finally {
+                    await client.release();
+                }
+                break;
+            case 'delete':
+                await executeQuery({
+                    text: `DELETE FROM "ingrijiriPaleative".servicii_beneficii_asisoc WHERE id_asisoc = $1`,
+                    values: [body.idAsisoc]
+                })
+                break;
+            default:
+                ctx.throw(422, 'Unknown action');
+        }
+
+        ctx.body = {message: 'Success'};
+    } catch (e) {
+        console.log(`Error on serviciiBeneficiiAsisoc: ${e.message || e}`);
+        ctx.status = e.status || 500;
+        ctx.body = e.message || e;
+    }
+}
+
 
 const location = (client: any) => new Promise((res, rej) => {
     client.removeListener('send-location', console.log);

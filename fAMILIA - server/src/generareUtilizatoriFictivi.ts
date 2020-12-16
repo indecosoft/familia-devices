@@ -12,7 +12,7 @@ export async function generareUtilizatoriFictivi() {
             `select dc."idClient", dc."idPersoana", dc.imei
                                 from admin."deviceConfig" dc
                                     left join "ingrijiriPaleative".users u on u.imei = dc.imei
-                                where (length(dc.imei) < 10 OR  "tipDispozitiv" = 1)
+                                where (length(dc.imei) < 10 OR  dc."tipDispozitiv" = 1)
                                     and u.imei is null
                                     and dc."dataStop" is null
                                 order by dc.id desc`)).rows;
